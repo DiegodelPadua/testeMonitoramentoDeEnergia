@@ -1,0 +1,118 @@
+body {
+
+    margin: 0;
+
+    font-family:
+        Arial,
+        sans-serif;
+
+    background:
+        #101820;
+
+    color:
+        white;
+
+}
+
+
+header {
+
+    text-align:
+        center;
+
+    padding:
+        40px;
+
+}
+
+
+header h1 {
+
+    margin:
+        0;
+
+}
+
+
+header p {
+
+    color:
+        #aaaaaa;
+
+}
+
+
+.dashboard {
+
+    width:
+        90%;
+
+    max-width:
+        1000px;
+
+    margin:
+        auto;
+
+    display:
+        grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(220px, 1fr)
+        );
+
+    gap:
+        20px;
+
+}
+
+
+.card {
+
+    background:
+        #1b2733;
+
+    padding:
+        30px;
+
+    border-radius:
+        15px;
+
+    text-align:
+        center;
+
+}
+
+
+.card span {
+
+    display:
+        block;
+
+    margin-bottom:
+        15px;
+
+    color:
+        #aaaaaa;
+
+}
+
+
+.card strong {
+
+    font-size:
+        38px;
+
+}
+
+
+.card small {
+
+    font-size:
+        18px;
+
+    margin-left:
+        5px;
+
+}

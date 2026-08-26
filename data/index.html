@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+
+<html lang="pt-BR">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Monitor de Energia
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+</head>
+
+
+<body>
+
+    <header>
+
+        <h1>
+            Monitor de Energia
+        </h1>
+
+        <p>
+            ESP32 + PZEM
+        </p>
+
+    </header>
+
+
+    <main class="dashboard">
+
+
+        <div class="card">
+
+            <span>
+                Tensão
+            </span>
+
+            <strong id="tensao">
+                --
+            </strong>
+
+            <small>
+                V
+            </small>
+
+        </div>
+
+
+        <div class="card">
+
+            <span>
+                Corrente
+            </span>
+
+            <strong id="corrente">
+                --
+            </strong>
+
+            <small>
+                A
+            </small>
+
+        </div>
+
+
+        <div class="card">
+
+            <span>
+                Potência
+            </span>
+
+            <strong id="potencia">
+                --
+            </strong>
+
+            <small>
+                W
+            </small>
+
+        </div>
+
+
+        <div class="card">
+
+            <span>
+                Energia
+            </span>
+
+            <strong id="energia">
+                --
+            </strong>
+
+            <small>
+                kWh
+            </small>
+
+        </div>
+
+
+        <div class="card">
+
+            <span>
+                Frequência
+            </span>
+
+            <strong id="frequencia">
+                --
+            </strong>
+
+            <small>
+                Hz
+            </small>
+
+        </div>
+
+
+        <div class="card">
+
+            <span>
+                Fator de Potência
+            </span>
+
+            <strong id="fp">
+                --
+            </strong>
+
+        </div>
+
+
+    </main>
+
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>
