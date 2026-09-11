@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="pt-BR">
 
 <head>
@@ -12,7 +11,7 @@
     >
 
     <title>
-        Monitor de Energia
+        Watt Vision
     </title>
 
     <link
@@ -20,129 +19,646 @@
         href="style.css"
     >
 
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js">
+    </script>
+
 </head>
 
 
 <body>
 
-    <header>
+<div class="app">
 
-        <h1>
-            Monitor de Energia
-        </h1>
+    <!-- ========================= -->
+    <!-- MENU LATERAL -->
+    <!-- ========================= -->
 
-        <p>
-            ESP32 + PZEM
-        </p>
+    <aside class="sidebar">
 
-    </header>
+        <div class="logo">
 
+            <div class="logo-icon">
+                ⚡
+            </div>
 
-    <main class="dashboard">
-
-
-        <div class="card">
-
-            <span>
-                Tensão
-            </span>
-
-            <strong id="tensao">
-                --
-            </strong>
-
-            <small>
-                V
-            </small>
+            <h2>
+                Watt Vision
+            </h2>
 
         </div>
 
 
-        <div class="card">
+        <nav>
 
-            <span>
-                Corrente
-            </span>
+            <a class="active" href="#">
+                ◫ Dashboard
+            </a>
 
-            <strong id="corrente">
-                --
-            </strong>
+            <a href="#">
+                ⚙ Equipamentos
+            </a>
 
-            <small>
-                A
-            </small>
+            <a href="#">
+                ▥ Medições
+            </a>
 
-        </div>
+            <a href="#">
+                ⚠ Alarmes
+            </a>
 
+            <a href="#">
+                ◉ Conectividade
+            </a>
 
-        <div class="card">
+            <a href="#">
+                ⚙ Configurações
+            </a>
 
-            <span>
-                Potência
-            </span>
+            <a href="#">
+                ▤ Relatórios
+            </a>
 
-            <strong id="potencia">
-                --
-            </strong>
+        </nav>
 
-            <small>
-                W
-            </small>
-
-        </div>
-
-
-        <div class="card">
-
-            <span>
-                Energia
-            </span>
-
-            <strong id="energia">
-                --
-            </strong>
-
-            <small>
-                kWh
-            </small>
-
-        </div>
+    </aside>
 
 
-        <div class="card">
+    <!-- ========================= -->
+    <!-- CONTEÚDO PRINCIPAL -->
+    <!-- ========================= -->
 
-            <span>
-                Frequência
-            </span>
+    <main class="content">
 
-            <strong id="frequencia">
-                --
-            </strong>
+        <!-- CABEÇALHO -->
 
-            <small>
-                Hz
-            </small>
+        <header class="topbar">
 
-        </div>
+            <div>
+
+                <h1>
+                    Dashboard
+                </h1>
+
+                <p>
+                    Monitoramento energético em tempo real
+                </p>
+
+            </div>
 
 
-        <div class="card">
+            <div class="status-system">
 
-            <span>
-                Fator de Potência
-            </span>
+                <span class="status-dot"></span>
 
-            <strong id="fp">
-                --
-            </strong>
+                ESP32 Online
 
-        </div>
+            </div>
 
+        </header>
+
+
+        <!-- ========================= -->
+        <!-- CARDS PRINCIPAIS -->
+        <!-- ========================= -->
+
+        <section class="cards">
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <span class="card-icon">
+                        ⚡
+                    </span>
+
+                    <span class="badge">
+                        Tempo real
+                    </span>
+
+                </div>
+
+                <h3>
+                    Tensão
+                </h3>
+
+                <div class="value">
+
+                    <span id="tensao">
+                        --
+                    </span>
+
+                    <small>
+                        V
+                    </small>
+
+                </div>
+
+                <p>
+                    Tensão da rede
+                </p>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <span class="card-icon">
+                        ↯
+                    </span>
+
+                </div>
+
+                <h3>
+                    Corrente
+                </h3>
+
+                <div class="value">
+
+                    <span id="corrente">
+                        --
+                    </span>
+
+                    <small>
+                        A
+                    </small>
+
+                </div>
+
+                <p>
+                    Corrente instantânea
+                </p>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <span class="card-icon">
+                        ⏱
+                    </span>
+
+                </div>
+
+                <h3>
+                    Potência Atual
+                </h3>
+
+                <div class="value">
+
+                    <span id="potencia">
+                        --
+                    </span>
+
+                    <small>
+                        W
+                    </small>
+
+                </div>
+
+                <p>
+                    Potência consumida
+                </p>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <span class="card-icon">
+                        ◇
+                    </span>
+
+                </div>
+
+                <h3>
+                    Energia Consumida
+                </h3>
+
+                <div class="value">
+
+                    <span id="energia">
+                        --
+                    </span>
+
+                    <small>
+                        kWh
+                    </small>
+
+                </div>
+
+                <p>
+                    Consumo acumulado
+                </p>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <span class="card-icon">
+                        ~
+                    </span>
+
+                </div>
+
+                <h3>
+                    Frequência
+                </h3>
+
+                <div class="value">
+
+                    <span id="frequencia">
+                        --
+                    </span>
+
+                    <small>
+                        Hz
+                    </small>
+
+                </div>
+
+                <p>
+                    Frequência da rede
+                </p>
+
+            </div>
+
+
+            <div class="card">
+
+                <div class="card-header">
+
+                    <span class="card-icon">
+                        %
+                    </span>
+
+                </div>
+
+                <h3>
+                    Fator de Potência
+                </h3>
+
+                <div class="value">
+
+                    <span id="fp">
+                        --
+                    </span>
+
+                </div>
+
+                <p>
+                    Eficiência elétrica
+                </p>
+
+            </div>
+
+        </section>
+
+
+        <!-- ========================= -->
+        <!-- GRÁFICO -->
+        <!-- ========================= -->
+
+        <section class="grid-main">
+
+            <div class="panel chart-panel">
+
+                <div class="panel-title">
+
+                    <div>
+
+                        <h2>
+                            Desempenho do Sistema
+                        </h2>
+
+                        <p>
+                            Potência instantânea
+                        </p>
+
+                    </div>
+
+
+                    <div class="live">
+
+                        <span class="status-dot"></span>
+
+                        Ao vivo
+
+                    </div>
+
+                </div>
+
+
+                <div class="chart-box">
+
+                    <canvas id="graficoPotencia"></canvas>
+
+                </div>
+
+            </div>
+
+
+            <!-- ========================= -->
+            <!-- STATUS -->
+            <!-- ========================= -->
+
+            <div class="panel">
+
+                <div class="panel-title">
+
+                    <div>
+
+                        <h2>
+                            Status do Sistema
+                        </h2>
+
+                        <p>
+                            Comunicação ESP32
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="status-list">
+
+                    <div>
+
+                        <span>
+                            ESP32
+                        </span>
+
+                        <strong class="online">
+                            Online
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            PZEM-004T
+                        </span>
+
+                        <strong
+                            class="online"
+                            id="statusPzem"
+                        >
+                            OK
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            HTTP
+                        </span>
+
+                        <strong class="online">
+                            Conectado
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            Atualização
+                        </span>
+
+                        <strong>
+                            2 segundos
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ========================= -->
+        <!-- INDICADORES -->
+        <!-- ========================= -->
+
+        <section class="panel indicadores">
+
+            <div class="panel-title">
+
+                <div>
+
+                    <h2>
+                        Indicadores Energéticos
+                    </h2>
+
+                    <p>
+                        Dados atuais do sistema
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="indicator-grid">
+
+                <div>
+
+                    <span>
+                        ⚡
+                    </span>
+
+                    <strong id="energiaIndicador">
+                        --
+                    </strong>
+
+                    <small>
+                        Consumo Total
+                    </small>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        ↯
+                    </span>
+
+                    <strong id="potenciaIndicador">
+                        --
+                    </strong>
+
+                    <small>
+                        Potência Atual
+                    </small>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        V
+                    </span>
+
+                    <strong id="tensaoIndicador">
+                        --
+                    </strong>
+
+                    <small>
+                        Tensão
+                    </small>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        A
+                    </span>
+
+                    <strong id="correnteIndicador">
+                        --
+                    </strong>
+
+                    <small>
+                        Corrente
+                    </small>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        ~
+                    </span>
+
+                    <strong id="frequenciaIndicador">
+                        --
+                    </strong>
+
+                    <small>
+                        Frequência
+                    </small>
+
+                </div>
+
+
+                <div>
+
+                    <span>
+                        %
+                    </span>
+
+                    <strong id="fpIndicador">
+                        --
+                    </strong>
+
+                    <small>
+                        Fator de Potência
+                    </small>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ========================= -->
+        <!-- EVENTOS -->
+        <!-- ========================= -->
+
+        <section class="bottom-grid">
+
+            <div class="panel">
+
+                <div class="panel-title">
+
+                    <h2>
+                        Monitoramento
+                    </h2>
+
+                </div>
+
+
+                <div class="event">
+
+                    <span class="green-dot"></span>
+
+                    Sensor PZEM conectado
+
+                </div>
+
+
+                <div class="event">
+
+                    <span class="green-dot"></span>
+
+                    Comunicação ESP32 ativa
+
+                </div>
+
+
+                <div class="event">
+
+                    <span class="green-dot"></span>
+
+                    Servidor HTTP ativo
+
+                </div>
+
+            </div>
+
+
+            <div class="panel">
+
+                <div class="panel-title">
+
+                    <h2>
+                        Eventos Recentes
+                    </h2>
+
+                </div>
+
+
+                <div id="listaEventos">
+
+                    <div class="event">
+                        Sistema iniciado
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
 
     </main>
 
+</div>
 
-    <script src="script.js"></script>
+
+<script src="script.js"></script>
 
 </body>
 

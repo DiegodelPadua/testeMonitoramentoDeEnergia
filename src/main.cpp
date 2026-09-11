@@ -4,42 +4,217 @@
 #include <LittleFS.h>
 #include <PZEM004Tv30.h>
 
-// ================================
-// WIFI
-// ================================
+// ==================================================
+// CONFIGURAÇÕES DE WI-FI
+// ==================================================
 
-const char* ssid = "Diego jogador";
-const char* password = "Rosalina10**";
+const char* ssid = "aapm";
+const char* password = "";
 
+// ==================================================
+// CONFIGURAÇÃO DO PZEM
+// ==================================================
 
-// ================================
-// PZEM
-// ================================
+#define PZEM_RX 16
+#define PZEM_TX 17
 
 PZEM004Tv30 pzem(
     Serial2,
-    16,
-    17
+    PZEM_RX,
+    PZEM_TX
 );
 
-
-// ================================
+// ==================================================
 // SERVIDOR WEB
-// ================================
+// ==================================================
 
 WebServer server(80);
 
+// ==================================================
+// CONTROLE DE TEMPO
+// ==================================================
 
-// ================================
-// ENVIA O DASHBOARD
-// ================================
+unsigned long ultimoDiagnostico = 0;
+
+const unsigned long intervaloDiagnostico = 2000;
+
+// ==================================================
+// VARIÁVEIS DE MEDIÇÃO
+// ==================================================
+
+float tensao = NAN;
+float corrente = NAN;
+float potencia = NAN;
+float energia = NAN;
+float frequencia = NAN;
+float fatorPotencia = NAN;
+
+// ==================================================
+// FUNÇÃO: VERIFICA SE O PZEM ESTÁ RESPONDENDO
+// ==================================================
+
+bool pzemValido()
+{
+    return !isnan(tensao);
+}
+
+// ==================================================
+// FUNÇÃO: LEITURA DO PZEM
+// ==================================================
+
+void lerPZEM()
+{
+    tensao = pzem.voltage();
+    corrente = pzem.current();
+    potencia = pzem.power();
+    energia = pzem.energy();
+    frequencia = pzem.frequency();
+    fatorPotencia = pzem.pf();
+}
+
+// ==================================================
+// FUNÇÃO: DIAGNÓSTICO NO SERIAL
+// ==================================================
+
+void mostrarDiagnostico()
+{
+    Serial.println();
+    Serial.println("========================================");
+    Serial.println("       DIAGNOSTICO DO SISTEMA");
+    Serial.println("========================================");
+
+    // --------------------------------------------
+    // WIFI
+    // --------------------------------------------
+
+    Serial.println();
+    Serial.println("[ WIFI ]");
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println("Status: CONECTADO");
+
+        Serial.print("SSID: ");
+        Serial.println(WiFi.SSID());
+
+        Serial.print("IP: ");
+        Serial.println(WiFi.localIP());
+
+        Serial.print("RSSI: ");
+        Serial.print(WiFi.RSSI());
+        Serial.println(" dBm");
+    }
+    else
+    {
+        Serial.println("Status: DESCONECTADO");
+    }
+
+    // --------------------------------------------
+    // PZEM
+    // --------------------------------------------
+
+    Serial.println();
+    Serial.println("[ PZEM-004T ]");
+
+    Serial.print("RX ESP32: GPIO ");
+    Serial.println(PZEM_RX);
+
+    Serial.print("TX ESP32: GPIO ");
+    Serial.println(PZEM_TX);
+
+    if (!pzemValido())
+    {
+        Serial.println("Status: SEM RESPOSTA");
+        Serial.println("ERRO: PZEM retornou NaN");
+
+        Serial.println();
+        Serial.println("Verifique:");
+
+        Serial.println(
+            "1 - PZEM TX -> GPIO 25"
+        );
+
+        Serial.println(
+            "2 - PZEM RX -> GPIO 26"
+        );
+
+        Serial.println(
+            "3 - GND comum"
+        );
+
+        Serial.println(
+            "4 - Alimentacao da interface"
+        );
+
+        Serial.println(
+            "5 - PZEM ligado corretamente a rede AC"
+        );
+    }
+    else
+    {
+        Serial.println("Status: OK");
+
+        Serial.print("Tensao: ");
+        Serial.print(tensao, 1);
+        Serial.println(" V");
+
+        Serial.print("Corrente: ");
+        Serial.print(corrente, 3);
+        Serial.println(" A");
+
+        Serial.print("Potencia: ");
+        Serial.print(potencia, 1);
+        Serial.println(" W");
+
+        Serial.print("Energia: ");
+        Serial.print(energia, 3);
+        Serial.println(" kWh");
+
+        Serial.print("Frequencia: ");
+        Serial.print(frequencia, 1);
+        Serial.println(" Hz");
+
+        Serial.print("FP: ");
+        Serial.println(
+            fatorPotencia,
+            2
+        );
+    }
+
+    Serial.println();
+    Serial.println("========================================");
+}
+
+// ==================================================
+// FUNÇÃO: ENVIA ARQUIVO HTML
+// ==================================================
 
 void enviarPagina()
 {
-    File arquivo = LittleFS.open(
-        "/index.html",
-        "r"
+    Serial.println(
+        "[HTTP] GET /"
     );
+
+    if (!LittleFS.exists("/index.html"))
+    {
+        Serial.println(
+            "[ERRO] index.html nao encontrado"
+        );
+
+        server.send(
+            404,
+            "text/plain",
+            "index.html nao encontrado"
+        );
+
+        return;
+    }
+
+    File arquivo =
+        LittleFS.open(
+            "/index.html",
+            "r"
+        );
 
     server.streamFile(
         arquivo,
@@ -49,17 +224,32 @@ void enviarPagina()
     arquivo.close();
 }
 
-
-// ================================
-// ENVIA O CSS
-// ================================
+// ==================================================
+// FUNÇÃO: ENVIA CSS
+// ==================================================
 
 void enviarCSS()
 {
-    File arquivo = LittleFS.open(
-        "/style.css",
-        "r"
+    Serial.println(
+        "[HTTP] GET /style.css"
     );
+
+    if (!LittleFS.exists("/style.css"))
+    {
+        server.send(
+            404,
+            "text/plain",
+            "style.css nao encontrado"
+        );
+
+        return;
+    }
+
+    File arquivo =
+        LittleFS.open(
+            "/style.css",
+            "r"
+        );
 
     server.streamFile(
         arquivo,
@@ -69,17 +259,32 @@ void enviarCSS()
     arquivo.close();
 }
 
-
-// ================================
-// ENVIA JAVASCRIPT
-// ================================
+// ==================================================
+// FUNÇÃO: ENVIA JAVASCRIPT
+// ==================================================
 
 void enviarJavaScript()
 {
-    File arquivo = LittleFS.open(
-        "/script.js",
-        "r"
+    Serial.println(
+        "[HTTP] GET /script.js"
     );
+
+    if (!LittleFS.exists("/script.js"))
+    {
+        server.send(
+            404,
+            "text/plain",
+            "script.js nao encontrado"
+        );
+
+        return;
+    }
+
+    File arquivo =
+        LittleFS.open(
+            "/script.js",
+            "r"
+        );
 
     server.streamFile(
         arquivo,
@@ -89,33 +294,59 @@ void enviarJavaScript()
     arquivo.close();
 }
 
-
-// ================================
-// ROTA DOS DADOS DO PZEM
-// ================================
+// ==================================================
+// ROTA /DADOS
+// ==================================================
 
 void enviarDados()
 {
-    float tensao =
-        pzem.voltage();
+    Serial.println();
+    Serial.println(
+        "[HTTP] GET /dados"
+    );
 
-    float corrente =
-        pzem.current();
+    lerPZEM();
 
-    float potencia =
-        pzem.power();
+    // --------------------------------------------
+    // VERIFICA ERRO DO PZEM
+    // --------------------------------------------
 
-    float energia =
-        pzem.energy();
+    if (
+        isnan(tensao) ||
+        isnan(corrente) ||
+        isnan(potencia) ||
+        isnan(energia) ||
+        isnan(frequencia) ||
+        isnan(fatorPotencia)
+    )
+    {
+        Serial.println(
+            "[HTTP] ERRO 503 - PZEM sem resposta"
+        );
 
-    float frequencia =
-        pzem.frequency();
+        String erro = "{";
 
-    float fatorPotencia =
-        pzem.pf();
+        erro += "\"status\":\"erro\",";
+        erro += "\"mensagem\":\"PZEM sem resposta\"";
 
+        erro += "}";
+
+        server.send(
+            503,
+            "application/json",
+            erro
+        );
+
+        return;
+    }
+
+    // --------------------------------------------
+    // CRIA JSON
+    // --------------------------------------------
 
     String json = "{";
+
+    json += "\"status\":\"ok\",";
 
     json += "\"tensao\":";
     json += String(tensao, 1);
@@ -143,10 +374,30 @@ void enviarDados()
     json += ",";
 
     json += "\"fp\":";
-    json += String(fatorPotencia, 2);
+    json += String(
+        fatorPotencia,
+        2
+    );
 
     json += "}";
 
+    // --------------------------------------------
+    // DEBUG HTTP
+    // --------------------------------------------
+
+    Serial.println(
+        "[HTTP] Resposta 200"
+    );
+
+    Serial.println(
+        "[HTTP] JSON:"
+    );
+
+    Serial.println(json);
+
+    // --------------------------------------------
+    // ENVIA RESPOSTA
+    // --------------------------------------------
 
     server.send(
         200,
@@ -155,62 +406,121 @@ void enviarDados()
     );
 }
 
+// ==================================================
+// ROTA /STATUS
+// ==================================================
 
-// ================================
-// SETUP
-// ================================
-
-void setup()
+void enviarStatus()
 {
-    // Inicia o monitor serial
-    Serial.begin(115200);
+    Serial.println(
+        "[HTTP] GET /status"
+    );
 
-    delay(1000);
+    String json = "{";
 
+    json += "\"wifi\":";
 
-    // ============================
-    // LITTLEFS
-    // ============================
-
-    if (LittleFS.begin(true))
+    if (WiFi.status() == WL_CONNECTED)
     {
-        Serial.println("LittleFS iniciado!");
+        json += "\"conectado\"";
     }
     else
     {
-        Serial.println("Erro ao iniciar LittleFS!");
+        json += "\"desconectado\"";
     }
 
+    json += ",";
 
-    // ============================
-    // WIFI
-    // ============================
+    json += "\"ip\":\"";
+    json += WiFi.localIP().toString();
+    json += "\",";
 
+    json += "\"rssi\":";
+    json += String(
+        WiFi.RSSI()
+    );
+
+    json += ",";
+
+    json += "\"pzem\":";
+
+    if (pzemValido())
+    {
+        json += "\"ok\"";
+    }
+    else
+    {
+        json += "\"erro\"";
+    }
+
+    json += "}";
+
+    server.send(
+        200,
+        "application/json",
+        json
+    );
+}
+
+// ==================================================
+// ROTA NÃO ENCONTRADA
+// ==================================================
+
+void rotaNaoEncontrada()
+{
+    Serial.print(
+        "[HTTP] 404: "
+    );
+
+    Serial.println(
+        server.uri()
+    );
+
+    server.send(
+        404,
+        "text/plain",
+        "Rota nao encontrada"
+    );
+}
+
+// ==================================================
+// CONECTAR WIFI
+// ==================================================
+
+void conectarWiFi()
+{
     Serial.println();
-    Serial.println("==========================");
-    Serial.println("      TESTE DE WI-FI      ");
-    Serial.println("==========================");
+    Serial.println(
+        "========================================"
+    );
 
-    Serial.print("Tentando conectar em: ");
+    Serial.println(
+        "         CONECTANDO AO WI-FI"
+    );
+
+    Serial.println(
+        "========================================"
+    );
+
+    Serial.print(
+        "Rede: "
+    );
+
     Serial.println(ssid);
 
+    WiFi.mode(
+        WIFI_STA
+    );
 
-    // Inicia conexão com a rede
     WiFi.begin(
         ssid,
         password
     );
 
-
-    // Vamos esperar no máximo 10 segundos
-    // pela conexão Wi-Fi.
-
     int tentativas = 0;
 
-
     while (
-        WiFi.status() != WL_CONNECTED
-        &&
+        WiFi.status() != WL_CONNECTED &&
         tentativas < 20
     )
     {
@@ -221,42 +531,146 @@ void setup()
         tentativas++;
     }
 
-
     Serial.println();
-
-
-    // ============================
-    // VERIFICA SE CONECTOU
-    // ============================
 
     if (WiFi.status() == WL_CONNECTED)
     {
-        Serial.println();
-        Serial.println("Wi-Fi CONECTADO!");
+        Serial.println(
+            "Wi-Fi CONECTADO!"
+        );
 
-        Serial.print("IP do ESP32: ");
+        Serial.print(
+            "IP do ESP32: "
+        );
+
         Serial.println(
             WiFi.localIP()
         );
 
-        Serial.print("Sinal Wi-Fi: ");
+        Serial.print(
+            "RSSI: "
+        );
+
         Serial.print(
             WiFi.RSSI()
         );
 
-        Serial.println(" dBm");
+        Serial.println(
+            " dBm"
+        );
     }
     else
     {
-        Serial.println();
-        Serial.println("Wi-Fi NAO CONECTADO!");
-        Serial.println("Verifique o nome da rede e a senha.");
+        Serial.println(
+            "ERRO: Wi-Fi nao conectado"
+        );
+    }
+}
+
+// ==================================================
+// SETUP
+// ==================================================
+
+void setup()
+{
+    // --------------------------------------------
+    // SERIAL
+    // --------------------------------------------
+
+    Serial.begin(
+        115200
+    );
+
+    delay(1500);
+
+    Serial.println();
+    Serial.println(
+        "========================================"
+    );
+
+    Serial.println(
+        " SISTEMA DE MONITORAMENTO DE ENERGIA"
+    );
+
+    Serial.println(
+        " ESP32 + PZEM-004T V3.0"
+    );
+
+    Serial.println(
+        "========================================"
+    );
+
+    // --------------------------------------------
+    // LITTLEFS
+    // --------------------------------------------
+
+    Serial.println();
+    Serial.println(
+        "[ LITTLEFS ]"
+    );
+
+    if (LittleFS.begin(true))
+    {
+        Serial.println(
+            "LittleFS iniciado com sucesso"
+        );
+    }
+    else
+    {
+        Serial.println(
+            "ERRO ao iniciar LittleFS"
+        );
     }
 
+    // --------------------------------------------
+    // WIFI
+    // --------------------------------------------
 
-    // ============================
-    // ROTAS WEB
-    // ============================
+    conectarWiFi();
+
+    // --------------------------------------------
+    // PRIMEIRO TESTE PZEM
+    // --------------------------------------------
+
+    Serial.println();
+    Serial.println(
+        "[ TESTE INICIAL DO PZEM ]"
+    );
+
+    lerPZEM();
+
+    if (pzemValido())
+    {
+        Serial.println(
+            "PZEM RESPONDEU!"
+        );
+
+        Serial.print(
+            "Tensao inicial: "
+        );
+
+        Serial.print(
+            tensao
+        );
+
+        Serial.println(
+            " V"
+        );
+    }
+    else
+    {
+        Serial.println(
+            "PZEM NAO RESPONDEU"
+        );
+
+        Serial.println(
+            "Leitura retornou NaN"
+        );
+    }
+
+    // --------------------------------------------
+    // ROTAS HTTP
+    // --------------------------------------------
 
     server.on(
         "/",
@@ -264,13 +678,11 @@ void setup()
         enviarPagina
     );
 
-
     server.on(
         "/style.css",
         HTTP_GET,
         enviarCSS
     );
-
 
     server.on(
         "/script.js",
@@ -278,43 +690,129 @@ void setup()
         enviarJavaScript
     );
 
-
     server.on(
         "/dados",
         HTTP_GET,
         enviarDados
     );
 
+    server.on(
+        "/status",
+        HTTP_GET,
+        enviarStatus
+    );
 
-    // ============================
-    // SERVIDOR
-    // ============================
+    server.onNotFound(
+        rotaNaoEncontrada
+    );
 
-    // Só inicia o servidor se
-    // estiver conectado ao Wi-Fi.
+    // --------------------------------------------
+    // INICIA SERVIDOR
+    // --------------------------------------------
 
-    if (WiFi.status() == WL_CONNECTED)
+    if (
+        WiFi.status() ==
+        WL_CONNECTED
+    )
     {
         server.begin();
 
+        Serial.println();
         Serial.println(
-            "Servidor iniciado!"
+            "Servidor HTTP iniciado!"
+        );
+
+        Serial.print(
+            "Dashboard: http://"
+        );
+
+        Serial.println(
+            WiFi.localIP()
+        );
+
+        Serial.print(
+            "Dados: http://"
+        );
+
+        Serial.print(
+            WiFi.localIP()
+        );
+
+        Serial.println(
+            "/dados"
+        );
+
+        Serial.print(
+            "Status: http://"
+        );
+
+        Serial.print(
+            WiFi.localIP()
+        );
+
+        Serial.println(
+            "/status"
         );
     }
 }
 
-
-// ================================
+// ==================================================
 // LOOP
-// ================================
+// ==================================================
 
 void loop()
 {
-    // Só tenta atender clientes
-    // se estiver conectado ao Wi-Fi.
+    // --------------------------------------------
+    // RECONEXÃO WIFI
+    // --------------------------------------------
 
-    if (WiFi.status() == WL_CONNECTED)
+    if (
+        WiFi.status() !=
+        WL_CONNECTED
+    )
+    {
+        Serial.println(
+            "[WIFI] Conexao perdida"
+        );
+
+        Serial.println(
+            "[WIFI] Tentando reconectar..."
+        );
+
+        WiFi.reconnect();
+
+        delay(1000);
+    }
+
+    // --------------------------------------------
+    // SERVIDOR HTTP
+    // --------------------------------------------
+
+    if (
+        WiFi.status() ==
+        WL_CONNECTED
+    )
     {
         server.handleClient();
+    }
+
+    // --------------------------------------------
+    // DIAGNÓSTICO PERIÓDICO
+    // --------------------------------------------
+
+    unsigned long agora =
+        millis();
+
+    if (
+        agora - ultimoDiagnostico
+        >= intervaloDiagnostico
+    )
+    {
+        ultimoDiagnostico =
+            agora;
+
+        lerPZEM();
+
+        mostrarDiagnostico();
     }
 }
