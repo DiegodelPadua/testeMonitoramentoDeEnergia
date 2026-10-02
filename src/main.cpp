@@ -3,13 +3,14 @@
 #include <WebServer.h>
 #include <LittleFS.h>
 #include <PZEM004Tv30.h>
+#include <PubSubClient.h>
 
 // ==================================================
 // CONFIGURAÇÕES DE WI-FI
 // ==================================================
 
-const char* ssid = "aapm";
-const char* password = "";
+const char* ssid = "iPhone de Juan";
+const char* password = "12345678";
 
 // ==================================================
 // CONFIGURAÇÃO DO PZEM
@@ -29,6 +30,25 @@ PZEM004Tv30 pzem(
 // ==================================================
 
 WebServer server(80);
+
+// ==========================================
+// WATT VISION - CONFIGURAÇÃO MQTT
+// ==========================================
+
+// Endereço e porta do broker HiveMQ.
+const char* mqttServidor = "broker.hivemq.com";
+const int mqttPorta = 1883;
+
+// Cliente de rede utilizado pelo MQTT.
+WiFiClient wifiClient;
+
+// Cliente MQTT.
+PubSubClient mqttClient(wifiClient);
+
+// Controle de tempo para reconexão.
+unsigned long ultimaTentativaMQTT = 0;
+
+const unsigned long intervaloReconexaoMQTT = 5000;
 
 // ==================================================
 // CONTROLE DE TEMPO
@@ -567,6 +587,48 @@ void conectarWiFi()
     }
 }
 
+// ==========================================
+// WATT VISION - CONEXÃO MQTT
+// ==========================================
+
+void conectarMQTT()
+{
+    // Não tenta conectar ao broker sem Wi-Fi.
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        return;
+    }
+
+    // Evita iniciar uma nova conexão
+    // quando já estamos conectados.
+    if (mqttClient.connected())
+    {
+        return;
+    }
+
+    // Identificador exclusivo para evitar
+    // conflitos com outros dispositivos.
+    String clientId = "wattvision-esp32-";
+    clientId += WiFi.macAddress();
+
+    // Remove os separadores do endereço MAC.
+    clientId.replace(":", "");
+
+    Serial.println();
+    Serial.println("[MQTT] Conectando ao HiveMQ...");
+
+    // Tenta estabelecer a conexão.
+    if (mqttClient.connect(clientId.c_str()))
+    {
+        Serial.println("[MQTT] Conectado com sucesso!");
+    }
+    else
+    {
+        Serial.print("[MQTT] Falha. Codigo: ");
+        Serial.println(mqttClient.state());
+    }
+}
+
 // ==================================================
 // SETUP
 // ==================================================
@@ -627,6 +689,22 @@ void setup()
     // --------------------------------------------
 
     conectarWiFi();
+
+    // ==========================================
+    // INICIALIZAÇÃO MQTT
+    // ==========================================
+
+    // Configura o endereço do broker.
+    mqttClient.setServer(
+        mqttServidor,
+        mqttPorta
+    );
+
+    // Realiza a primeira tentativa de conexão.
+    conectarMQTT();
+
+    // Registra o horário da tentativa.
+    ultimaTentativaMQTT = millis();
 
     // --------------------------------------------
     // PRIMEIRO TESTE PZEM
@@ -782,6 +860,34 @@ void loop()
         WiFi.reconnect();
 
         delay(1000);
+    }
+
+    // ==========================================
+    // MANUTENÇÃO DA CONEXÃO MQTT
+    // ==========================================
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        // Verifica se precisamos reconectar.
+        if (!mqttClient.connected())
+        {
+            unsigned long agoraMQTT = millis();
+
+            if (
+                agoraMQTT - ultimaTentativaMQTT
+                >= intervaloReconexaoMQTT
+            )
+            {
+                ultimaTentativaMQTT = agoraMQTT;
+
+                conectarMQTT();
+            }
+        }
+        else
+        {
+            // Mantém a comunicação MQTT ativa.
+            mqttClient.loop();
+        }
     }
 
     // --------------------------------------------
