@@ -4,13 +4,13 @@
 #include <LittleFS.h>
 #include <PZEM004Tv30.h>
 #include <PubSubClient.h>
-
+#include <time.h>
 // ==================================================
 // CONFIGURAÇÕES DE WI-FI
 // ==================================================
 
-const char* ssid = "iPhone de Juan";
-const char* password = "12345678";
+const char* ssid = "Galaxy S23 Ultra 5E40";
+const char* password = "lucas123";
 
 // ==================================================
 // CONFIGURAÇÃO DO PZEM
@@ -39,6 +39,9 @@ WebServer server(80);
 const char* mqttServidor = "broker.hivemq.com";
 const int mqttPorta = 1883;
 
+// Tópico utilizado para publicar as medições do Watt Vision.
+const char* mqttTopicoMedicoes = "wattvision/medicoes";
+
 // Cliente de rede utilizado pelo MQTT.
 WiFiClient wifiClient;
 
@@ -49,6 +52,48 @@ PubSubClient mqttClient(wifiClient);
 unsigned long ultimaTentativaMQTT = 0;
 
 const unsigned long intervaloReconexaoMQTT = 5000;
+
+// ==========================================================
+// WATT VISION - ARMAZENAMENTO LOCAL DAS MEDIÇÕES
+// ==========================================================
+
+
+// Arquivo utilizado como fila de medições pendentes.
+const char* arquivoMedicoes = "/medicoes_pendentes.txt";
+
+
+// ==========================================================
+// WATT VISION - CONFIGURAÇÃO DE DATA E HORA
+// ==========================================================
+
+// Servidor NTP utilizado para sincronizar o relógio.
+const char* servidorNTP = "pool.ntp.org";
+
+// Brasil / horário de Brasília (UTC-3).
+// Neste primeiro teste estamos utilizando offset fixo.
+const long fusoHorario = -3 * 3600;
+
+// Sem horário de verão.
+const int horarioVerao = 0;
+
+// ==========================================================
+// WATT VISION - INTERVALO DAS MEDIÇÕES
+// ==========================================================
+
+// 30 segundos somente para testes.
+// Depois alteraremos para 30 minutos.
+const unsigned long intervaloMedicao = 30000;
+
+unsigned long ultimaMedicao = 0;
+
+// Arquivo que armazenará medições que não puderam ser enviadas.
+const char* arquivoPendentes = "/medicoes_pendentes.txt";
+
+
+// Número máximo de medições que podem permanecer
+// armazenadas na fila do LittleFS.
+const int limiteMedicoesPendentes = 100;
+
 
 // ==================================================
 // CONTROLE DE TEMPO
@@ -61,6 +106,12 @@ const unsigned long intervaloDiagnostico = 2000;
 // ==================================================
 // VARIÁVEIS DE MEDIÇÃO
 // ==================================================
+
+// ==========================================================
+// PROTÓTIPOS DAS FUNÇÕES
+// ==========================================================
+
+void reenviarMedicoesPendentes();
 
 float tensao = NAN;
 float corrente = NAN;
@@ -150,13 +201,13 @@ void mostrarDiagnostico()
         Serial.println();
         Serial.println("Verifique:");
 
-        Serial.println(
-            "1 - PZEM TX -> GPIO 25"
-        );
+        Serial.print("1 - PZEM TX -> GPIO ");
+        Serial.print(PZEM_RX);
+        Serial.println(" (RX ESP32)");
 
-        Serial.println(
-            "2 - PZEM RX -> GPIO 26"
-        );
+        Serial.print("2 - PZEM RX -> GPIO ");
+        Serial.print(PZEM_TX);
+        Serial.println(" (TX ESP32)");
 
         Serial.println(
             "3 - GND comum"
@@ -620,7 +671,14 @@ void conectarMQTT()
     // Tenta estabelecer a conexão.
     if (mqttClient.connect(clientId.c_str()))
     {
-        Serial.println("[MQTT] Conectado com sucesso!");
+        Serial.println(
+            "[MQTT] Conectado com sucesso!"
+        );
+
+        // Após recuperar a conexão MQTT,
+        // tenta enviar as medições armazenadas
+        // enquanto o sistema estava offline.
+        reenviarMedicoesPendentes();
     }
     else
     {
@@ -628,7 +686,579 @@ void conectarMQTT()
         Serial.println(mqttClient.state());
     }
 }
+// ==========================================================
+// SINCRONIZAR DATA E HORA PELA INTERNET
+// ==========================================================
 
+void sincronizarRelogio()
+{
+    // Só é possível sincronizar via NTP se houver Wi-Fi.
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        Serial.println("[RELOGIO] Wi-Fi indisponivel.");
+        return;
+    }
+
+    Serial.println();
+    Serial.println("[RELOGIO] Sincronizando data e hora...");
+
+    configTime(
+        fusoHorario,
+        horarioVerao,
+        servidorNTP
+    );
+
+    struct tm dataHora;
+
+    // Aguarda até 10 segundos pela sincronização.
+    if (!getLocalTime(&dataHora, 10000))
+    {
+        Serial.println("[RELOGIO] Falha na sincronizacao.");
+        return;
+    }
+
+    Serial.println("[RELOGIO] Sincronizado com sucesso!");
+
+    char horario[25];
+
+    strftime(
+        horario,
+        sizeof(horario),
+        "%Y-%m-%d %H:%M:%S",
+        &dataHora
+    );
+
+    Serial.print("[RELOGIO] Data/hora: ");
+    Serial.println(horario);
+}
+
+// ==========================================================
+// OBTER DATA E HORA ATUAL
+// ==========================================================
+
+String obterDataHora()
+{
+    struct tm dataHora;
+
+    // Tenta obter a data/hora atual do relógio do ESP32.
+    if (!getLocalTime(&dataHora))
+    {
+        return "";
+    }
+
+    char horario[25];
+
+    strftime(
+        horario,
+        sizeof(horario),
+        "%Y-%m-%d %H:%M:%S",
+        &dataHora
+    );
+
+    return String(horario);
+}
+
+// ==========================================================
+// CONTROLAR LIMITE DA FILA DE MEDIÇÕES PENDENTES
+// ==========================================================
+
+void controlarLimiteFila()
+{
+    // Se o arquivo ainda não existe, não há nada para controlar.
+    if (!LittleFS.exists(arquivoPendentes))
+    {
+        return;
+    }
+
+    File arquivo = LittleFS.open(
+        arquivoPendentes,
+        FILE_READ
+    );
+
+    if (!arquivo)
+    {
+        Serial.println(
+            "[FILA] ERRO ao abrir arquivo para verificar limite."
+        );
+        return;
+    }
+
+    // ------------------------------------------------------
+    // CONTA QUANTAS MEDIÇÕES EXISTEM
+    // Cada linha do arquivo representa uma medição JSON.
+    // ------------------------------------------------------
+
+    int quantidade = 0;
+
+    while (arquivo.available())
+    {
+        String linha = arquivo.readStringUntil('\n');
+        linha.trim();
+
+        if (linha.length() > 0)
+        {
+            quantidade++;
+        }
+    }
+
+    arquivo.close();
+
+    // Ainda existe espaço para a próxima medição.
+    if (quantidade < limiteMedicoesPendentes)
+    {
+        return;
+    }
+
+    Serial.println(
+        "[FILA] Limite de medicoes pendentes atingido."
+    );
+
+    Serial.println(
+        "[FILA] Removendo registro mais antigo."
+    );
+
+    // ------------------------------------------------------
+    // CRIA ARQUIVO TEMPORÁRIO
+    // ------------------------------------------------------
+
+    arquivo = LittleFS.open(
+        arquivoPendentes,
+        FILE_READ
+    );
+
+    File temporario = LittleFS.open(
+        "/medicoes_temp.txt",
+        FILE_WRITE
+    );
+
+    if (!arquivo || !temporario)
+    {
+        Serial.println(
+            "[FILA] ERRO ao reorganizar fila."
+        );
+
+        if (arquivo)
+        {
+            arquivo.close();
+        }
+
+        if (temporario)
+        {
+            temporario.close();
+        }
+
+        return;
+    }
+
+    bool primeiraMedicao = true;
+
+    while (arquivo.available())
+    {
+        String linha = arquivo.readStringUntil('\n');
+        linha.trim();
+
+        if (linha.length() == 0)
+        {
+            continue;
+        }
+
+        // Ignora somente o registro mais antigo.
+        if (primeiraMedicao)
+        {
+            primeiraMedicao = false;
+            continue;
+        }
+
+        temporario.println(linha);
+    }
+
+    arquivo.close();
+    temporario.close();
+
+    // ------------------------------------------------------
+    // SUBSTITUI A FILA ANTIGA PELA NOVA
+    // ------------------------------------------------------
+
+    LittleFS.remove(arquivoPendentes);
+
+        if (!LittleFS.rename(
+            "/medicoes_temp.txt",
+            arquivoPendentes
+        ))
+        {
+            Serial.println(
+                "[FILA] ERRO ao atualizar arquivo de pendencias."
+            );
+
+            return;
+        }
+
+        Serial.println(
+            "[FILA] Registro mais antigo removido."
+        );
+    }
+
+    // ==========================================================
+// REENVIAR MEDIÇÕES PENDENTES
+// ==========================================================
+
+void reenviarMedicoesPendentes()
+{
+    // Só tenta reenviar se o MQTT estiver conectado.
+    if (!mqttClient.connected())
+    {
+        return;
+    }
+
+    // Se não existe arquivo, não existem pendências.
+    if (!LittleFS.exists(arquivoPendentes))
+    {
+        return;
+    }
+
+    File arquivo = LittleFS.open(
+        arquivoPendentes,
+        FILE_READ
+    );
+
+    if (!arquivo)
+    {
+        Serial.println(
+            "[FILA] ERRO ao abrir medicoes pendentes."
+        );
+        return;
+    }
+
+    // Arquivo temporário utilizado para preservar
+    // medições que não conseguirmos reenviar.
+    File temporario = LittleFS.open(
+        "/medicoes_reenvio.tmp",
+        FILE_WRITE
+    );
+
+    if (!temporario)
+    {
+        Serial.println(
+            "[FILA] ERRO ao criar arquivo temporario."
+        );
+
+        arquivo.close();
+        return;
+    }
+
+    Serial.println();
+    Serial.println(
+        "[FILA] Verificando medicoes pendentes..."
+    );
+
+    int enviadas = 0;
+    int mantidas = 0;
+
+    // Indica que ocorreu uma falha durante o reenvio.
+    bool falhaEnvio = false;
+
+    while (arquivo.available())
+    {
+        String registro =
+            arquivo.readStringUntil('\n');
+
+        registro.trim();
+
+        if (registro.length() == 0)
+        {
+            continue;
+        }
+
+        // --------------------------------------------------
+        // SE JÁ OCORREU UMA FALHA
+        // --------------------------------------------------
+        // Não tentamos publicar as próximas medições.
+        // Apenas preservamos tudo no arquivo temporário.
+        // Isso mantém a ordem FIFO da fila.
+
+        if (falhaEnvio)
+        {
+            temporario.println(registro);
+            mantidas++;
+
+            continue;
+        }
+
+        // --------------------------------------------------
+        // VERIFICA CONEXÃO MQTT
+        // --------------------------------------------------
+
+        if (!mqttClient.connected())
+        {
+            Serial.println(
+                "[FILA] MQTT desconectou durante o reenvio."
+            );
+
+            temporario.println(registro);
+            mantidas++;
+
+            falhaEnvio = true;
+
+            continue;
+        }
+
+        Serial.print(
+            "[FILA] Reenviando: "
+        );
+
+        Serial.println(registro);
+
+        // --------------------------------------------------
+        // PUBLICA A MEDIÇÃO
+        // --------------------------------------------------
+
+        bool publicado = mqttClient.publish(
+            mqttTopicoMedicoes,
+            registro.c_str()
+        );
+
+        if (publicado)
+        {
+            enviadas++;
+
+            Serial.println(
+                "[FILA] Medicao reenviada com sucesso."
+            );
+        }
+        else
+        {
+            // Se falhar, mantém esta medição.
+            temporario.println(registro);
+
+            mantidas++;
+
+            falhaEnvio = true;
+
+            Serial.println(
+                "[FILA] Falha no reenvio."
+            );
+        }
+
+        // Mantém a comunicação MQTT ativa.
+        mqttClient.loop();
+
+        // Pequeno intervalo para não disparar
+        // todas as mensagens instantaneamente.
+        delay(50);
+    }
+
+    arquivo.close();
+    temporario.close();
+
+    // ------------------------------------------------------
+    // ATUALIZA O ARQUIVO DE PENDÊNCIAS
+    // ------------------------------------------------------
+
+    LittleFS.remove(arquivoPendentes);
+
+    if (mantidas > 0)
+    {
+        if (!LittleFS.rename(
+            "/medicoes_reenvio.tmp",
+            arquivoPendentes
+        ))
+        {
+            Serial.println(
+                "[FILA] ERRO ao atualizar pendencias."
+            );
+
+            return;
+        }
+    }
+    else
+    {
+        // Tudo foi enviado.
+        LittleFS.remove(
+            "/medicoes_reenvio.tmp"
+        );
+    }
+
+    Serial.println();
+    Serial.print(
+        "[FILA] Medicoes reenviadas: "
+    );
+
+    Serial.println(enviadas);
+
+    Serial.print(
+        "[FILA] Medicoes ainda pendentes: "
+    );
+
+    Serial.println(mantidas);
+
+    if (mantidas == 0)
+    {
+        Serial.println(
+            "[FILA] Fila de pendencias vazia."
+        );
+    }
+}
+
+// ==========================================================
+// SALVAR MEDIÇÃO PENDENTE NO LITTLEFS
+// ==========================================================
+
+void salvarMedicaoPendente(String registro)
+{
+
+        // Antes de adicionar uma nova medição,
+        // verifica se a fila atingiu o limite.
+        controlarLimiteFila();
+
+        File arquivo = LittleFS.open(
+            arquivoPendentes,
+            FILE_APPEND
+        );
+
+        if (!arquivo)
+        {
+            Serial.println(
+                "[FILA] ERRO ao abrir arquivo de pendencias."
+            );
+            return;
+        }
+
+        arquivo.println(registro);
+        arquivo.close();
+
+        Serial.println(
+            "[FILA] Medicao armazenada no LittleFS."
+        );
+    }
+
+    // ==========================================================
+    // REALIZAR MEDIÇÃO PROGRAMADA
+    // ==========================================================
+
+    void realizarMedicaoProgramada()
+    {
+        Serial.println();
+        Serial.println("========================================");
+        Serial.println("        MEDICAO PROGRAMADA");
+        Serial.println("========================================");
+
+        // Atualiza os valores vindos do PZEM.
+        lerPZEM();
+
+        // Verifica se a leitura é válida.
+        if (
+            isnan(tensao) ||
+            isnan(corrente) ||
+            isnan(potencia) ||
+            isnan(energia) ||
+            isnan(frequencia) ||
+            isnan(fatorPotencia)
+        )
+        {
+            Serial.println("[MEDICAO] PZEM sem resposta.");
+            return;
+        }
+
+        String dataHora = obterDataHora();
+
+        if (dataHora == "")
+        {
+            Serial.println(
+                "[MEDICAO] Data/hora indisponivel."
+            );
+            return;
+        }
+
+        // JSON já utilizando os mesmos nomes do backend.
+        String registro = "{";
+
+        registro += "\"data_hora\":\"";
+        registro += dataHora;
+        registro += "\",";
+
+        registro += "\"tensao\":";
+        registro += String(tensao, 2);
+        registro += ",";
+
+        registro += "\"corrente\":";
+        registro += String(corrente, 3);
+        registro += ",";
+
+        registro += "\"potencia_ativa\":";
+        registro += String(potencia, 2);
+        registro += ",";
+
+        registro += "\"energia_acumulada\":";
+        registro += String(energia, 3);
+        registro += ",";
+
+        registro += "\"frequencia\":";
+        registro += String(frequencia, 2);
+        registro += ",";
+
+        registro += "\"fator_potencia\":";
+        registro += String(fatorPotencia, 3);
+
+        registro += "}";
+
+        Serial.print("[MEDICAO] Data/hora: ");
+        Serial.println(dataHora);
+
+        Serial.print("[MEDICAO] JSON: ");
+        Serial.println(registro);
+
+        // ======================================================
+        // DECISÃO ONLINE / OFFLINE
+        // ======================================================
+
+    if (
+                WiFi.status() == WL_CONNECTED &&
+                mqttClient.connected()
+            )
+            {
+                Serial.println("[MEDICAO] MQTT disponivel.");
+                Serial.println("[MQTT] Publicando medicao...");
+
+                // Envia o JSON para o broker MQTT.
+                bool publicado = mqttClient.publish(
+                    mqttTopicoMedicoes,
+                    registro.c_str()
+                );
+
+                if (publicado)
+                {
+                    Serial.println(
+                        "[MQTT] Medicao publicada com sucesso!"
+                    );
+                }
+                else
+                {
+                    Serial.println(
+                        "[MQTT] Falha ao publicar."
+                    );
+
+                    Serial.println(
+                        "[FILA] Salvando medicao como pendente..."
+                    );
+
+                    salvarMedicaoPendente(registro);
+                }
+            }
+            else
+            {
+                Serial.println(
+                    "[MEDICAO] MQTT indisponivel."
+                );
+
+                Serial.println(
+                    "[FILA] Salvando medicao como pendente..."
+                );
+
+                salvarMedicaoPendente(registro);
+            }
+
+        Serial.println("========================================");
+}
 // ==================================================
 // SETUP
 // ==================================================
@@ -683,12 +1313,17 @@ void setup()
             "ERRO ao iniciar LittleFS"
         );
     }
-
+   
+        
     // --------------------------------------------
     // WIFI
     // --------------------------------------------
 
     conectarWiFi();
+
+
+    // Sincroniza o relógio do ESP32 pela internet.
+    sincronizarRelogio();
 
     // ==========================================
     // INICIALIZAÇÃO MQTT
@@ -920,5 +1555,22 @@ void loop()
         lerPZEM();
 
         mostrarDiagnostico();
+    }
+
+
+    // ==========================================================
+    // MEDIÇÃO PROGRAMADA
+    // ==========================================================
+
+    unsigned long agoraMedicao = millis();
+
+    if (
+        agoraMedicao - ultimaMedicao
+        >= intervaloMedicao
+    )
+    {
+        ultimaMedicao = agoraMedicao;
+
+        realizarMedicaoProgramada();
     }
 }
