@@ -9,8 +9,8 @@
 // CONFIGURAÇÕES DE WI-FI
 // ==================================================
 
-const char* ssid = "Galaxy S23 Ultra 5E40";
-const char* password = "lucas123";
+const char* ssid = "Diego jogador";
+const char* password = "Rosalina10**";
 
 // ==================================================
 // CONFIGURAÇÃO DO PZEM
