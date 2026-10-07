@@ -19,6 +19,16 @@ const char* password = "Rosalina10**";
 #define PZEM_RX 16
 #define PZEM_TX 17
 
+// ==================================================
+// IDENTIFICAÇÃO DO PZEM
+// ==================================================
+
+// ID deste PZEM cadastrado no banco de dados.
+// Neste protótipo, este conjunto ESP32 + PZEM
+// corresponde ao registro ID 1 da tbl_pzem.
+const int ID_PZEM = 1;
+
+
 PZEM004Tv30 pzem(
     Serial2,
     PZEM_RX,
@@ -1172,6 +1182,12 @@ void salvarMedicaoPendente(String registro)
         // JSON já utilizando os mesmos nomes do backend.
         String registro = "{";
 
+        // Identificação do PZEM responsável pela medição.
+        registro += "\"id_pzem\":";
+        registro += String(ID_PZEM);
+        registro += ",";
+        
+        // Data e hora original da medição.
         registro += "\"data_hora\":\"";
         registro += dataHora;
         registro += "\",";
